@@ -1,0 +1,10 @@
+.env
+*.zip
+logs/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+data/backups/
+venv/
+.venv/
