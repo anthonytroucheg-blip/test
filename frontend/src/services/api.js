@@ -39,6 +39,19 @@ export const createMemory = (data) => request('POST', '/api/memory', data)
 export const updateMemory = (id, data) => request('PUT', `/api/memory/${id}`, data)
 export const deleteMemory = (id) => request('DELETE', `/api/memory/${id}`)
 
+export async function uploadDocument(file, category, title) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('category', category)
+  form.append('title', title)
+  const res = await fetch(`${BASE}/api/memory/upload`, { method: 'POST', body: form })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'Erreur upload')
+  }
+  return res.json()
+}
+
 // Settings
 export const getSettings = () => request('GET', '/api/settings')
 export const saveSettings = (data) => request('PUT', '/api/settings', data)
