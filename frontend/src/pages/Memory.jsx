@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Brain, X, Check } from 'lucide-react'
-import { getMemory, createMemory, updateMemory, deleteMemory } from '../services/api'
+import { useState, useEffect, useRef } from 'react'
+import { Plus, Edit2, Trash2, Brain, X, Check, Upload, FileText, Loader2 } from 'lucide-react'
+import { getMemory, createMemory, updateMemory, deleteMemory, uploadDocument } from '../services/api'
 
 const CATEGORIES = [
   { id: 'all',         label: 'Tout',         color: 'slate' },
@@ -72,17 +72,124 @@ function MemoryModal({ item, onClose, onSave }) {
   )
 }
 
+function UploadModal({ onClose, onUploaded }) {
+  const [file, setFile] = useState(null)
+  const [category, setCategory] = useState('notes')
+  const [title, setTitle] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+  const inputRef = useRef()
+
+  const handleFile = (f) => {
+    setFile(f)
+    if (!title) setTitle(f.name.replace(/\.[^.]+$/, ''))
+    setError('')
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    const f = e.dataTransfer.files[0]
+    if (f) handleFile(f)
+  }
+
+  async function submit() {
+    if (!file) return
+    setUploading(true)
+    setError('')
+    try {
+      const result = await uploadDocument(file, category, title)
+      onUploaded(result)
+      onClose()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-slate-800 text-lg flex items-center gap-2">
+            <Upload size={18} className="text-indigo-500" /> Importer un document
+          </h2>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X size={18} /></button>
+        </div>
+
+        <div
+          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors mb-4 ${file ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'}`}
+          onClick={() => inputRef.current.click()}
+          onDrop={handleDrop}
+          onDragOver={e => e.preventDefault()}
+        >
+          <input ref={inputRef} type="file" accept=".pdf,.docx,.txt,.md" className="hidden" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
+          {file ? (
+            <div className="flex items-center justify-center gap-2 text-indigo-600">
+              <FileText size={20} />
+              <span className="text-sm font-medium">{file.name}</span>
+              <span className="text-xs text-slate-400">({(file.size / 1024).toFixed(0)} Ko)</span>
+            </div>
+          ) : (
+            <>
+              <Upload size={28} className="mx-auto text-slate-300 mb-2" />
+              <p className="text-sm text-slate-500">Glisse un fichier ici ou <span className="text-indigo-600">clique pour choisir</span></p>
+              <p className="text-xs text-slate-400 mt-1">PDF, DOCX, TXT — max 10 Mo</p>
+            </>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Catégorie</label>
+            <select value={category} onChange={e => setCategory(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+              {CATEGORIES.filter(c => c.id !== 'all').map(c => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          <input
+            value={title} onChange={e => setTitle(e.target.value)} placeholder="Titre (optionnel)"
+            className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+
+        {error && <p className="text-xs text-red-500 mt-3 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} className="flex-1 border border-slate-200 rounded-xl py-2.5 text-sm text-slate-600 hover:bg-slate-50">
+            Annuler
+          </button>
+          <button
+            onClick={submit}
+            disabled={!file || uploading}
+            className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl py-2.5 text-sm font-medium flex items-center justify-center gap-2"
+          >
+            {uploading ? <><Loader2 size={15} className="animate-spin" /> Traitement…</> : <><Upload size={15} /> Importer</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Memory() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [modal, setModal] = useState(null) // null | 'new' | { item }
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
     try { setItems(await getMemory()) } catch {} finally { setLoading(false) }
+  }
+
+  function handleUploaded(item) {
+    setItems(prev => [item, ...prev])
   }
 
   async function handleSave(data) {
@@ -116,6 +223,9 @@ export default function Memory() {
           onSave={handleSave}
         />
       )}
+      {uploadOpen && (
+        <UploadModal onClose={() => setUploadOpen(false)} onUploaded={handleUploaded} />
+      )}
 
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -124,12 +234,20 @@ export default function Memory() {
             Ces informations sont transmises aux agents IA pour personnaliser leurs réponses.
           </p>
         </div>
-        <button
-          onClick={() => setModal('new')}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm"
-        >
-          <Plus size={16} /> Ajouter
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setUploadOpen(true)}
+            className="flex items-center gap-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 hover:text-indigo-600 px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition-colors"
+          >
+            <Upload size={16} /> Importer
+          </button>
+          <button
+            onClick={() => setModal('new')}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+          >
+            <Plus size={16} /> Ajouter
+          </button>
+        </div>
       </div>
 
       {/* Category filters */}
